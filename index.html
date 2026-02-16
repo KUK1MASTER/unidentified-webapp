@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>UNIDENTIFIED — VPN Service</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+
+  :root {
+    --bg-primary: #0b0e14;
+    --bg-secondary: #0f1219;
+    --bg-card: #141821;
+    --bg-card-hover: #1a1f2b;
+    --border: #1c2233;
+    --border-active: #2a3550;
+    --text-primary: #e2e8f0;
+    --text-secondary: #64748b;
+    --text-dim: #334155;
+    --accent: #22d45e;
+    --accent-dim: rgba(34, 212, 94, 0.12);
+    --accent-mid: rgba(34, 212, 94, 0.25);
+    --accent-glow: rgba(34, 212, 94, 0.4);
+    --error: #ef4444;
+    --error-dim: rgba(239, 68, 68, 0.12);
+    --warning: #f59e0b;
+    --warning-dim: rgba(245, 158, 11, 0.12);
+    --blue: #3b82f6;
+    --blue-dim: rgba(59, 130, 246, 0.12);
+    --purple: #8b5cf6;
+    --purple-dim: rgba(139, 92, 246, 0.12);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(34, 212, 94, 0.01) 2px, rgba(34, 212, 94, 0.01) 4px);
+    pointer-events: none; z-index: 9999;
+  }
+
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #1c2233; border-radius: 2px; }
+
+  .screen { display: none; flex-direction: column; min-height: 100vh; padding: 0 16px 100px; animation: screenIn 0.3s ease; }
+  .screen.active { display: flex; }
+  @keyframes screenIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ====== TOP BAR ====== */
+  .topbar {
+    position: sticky; top: 0; z-index: 100;
+    background: linear-gradient(180deg, var(--bg-primary) 80%, transparent);
+    padding: 14px 0 20px; margin: 0 -16px; padding-left: 16px; padding-right: 16px;
+  }
+  .topbar-boot { color: var(--text-dim); font-size: 9px; font-family: 'Share Tech Mono', monospace; letter-spacing: 1.5px; margin-bottom: 8px; }
+  .topbar-title { font-size: 20px; font-weight: 700; letter-spacing: 4px; text-transform: lowercase; }
+  .topbar-title .accent { color: var(--accent); text-shadow: 0 0 30px var(--accent-glow); }
+  .topbar-subtitle { font-size: 10px; color: var(--text-secondary); letter-spacing: 2px; text-transform: uppercase; margin-top: 3px; }
+
+  /* Glitch */
+  .glitch { position: relative; }
+  .glitch::before, .glitch::after { content: attr(data-text); position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+  .glitch::before { animation: glitch1 4s infinite; color: #ff0040; z-index: -1; }
+  .glitch::after { animation: glitch2 4s infinite; color: #0ff; z-index: -2; }
+  @keyframes glitch1 { 0%,95%,100%{clip-path:inset(0);transform:translate(0)}96%{clip-path:inset(20% 0 40% 0);transform:translate(-2px,1px)}98%{clip-path:inset(60% 0 10% 0);transform:translate(2px,-1px)} }
+  @keyframes glitch2 { 0%,93%,100%{clip-path:inset(0);transform:translate(0)}94%{clip-path:inset(30% 0 20% 0);transform:translate(2px,-1px)}97%{clip-path:inset(50% 0 20% 0);transform:translate(1px,-2px)} }
+
+  /* ====== STATUS LINE ====== */
+  .status-line {
+    display: flex; align-items: center; gap: 14px; padding: 10px 0;
+    border-bottom: 1px solid var(--border); font-size: 10px; color: var(--text-secondary);
+    overflow-x: auto; white-space: nowrap;
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 2s infinite; flex-shrink: 0; }
+  @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
+  .status-item { display: flex; align-items: center; gap: 5px; }
+  .status-label { color: var(--text-dim); }
+
+  /* ====== PROFILE CARD ====== */
+  .profile-card {
+    background: linear-gradient(135deg, var(--bg-card) 0%, #161c28 100%);
+    border: 1px solid var(--border); border-radius: 10px; padding: 18px; margin-top: 14px;
+    position: relative; overflow: hidden;
+  }
+  .profile-card::before {
+    content: ''; position: absolute; top: -50%; right: -50%; width: 100%; height: 100%;
+    background: radial-gradient(circle, var(--accent-dim) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .profile-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; position: relative; }
+  .profile-prompt { font-size: 12px; color: var(--accent); font-family: 'Share Tech Mono', monospace; }
+  .profile-prompt::after { content: '_'; animation: blink 1s step-end infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .profile-id { font-size: 10px; color: var(--text-dim); }
+  .balance-section { display: flex; justify-content: space-between; align-items: flex-end; position: relative; }
+  .balance-label { font-size: 9px; color: var(--text-secondary); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 4px; }
+  .balance-amount { font-size: 30px; font-weight: 700; color: var(--text-primary); letter-spacing: -1px; }
+  .balance-currency { font-size: 13px; color: var(--text-secondary); margin-left: 4px; }
+
+  .btn-topup {
+    background: var(--accent); color: var(--bg-primary); padding: 10px 20px;
+    border-radius: 8px; border: none; font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 700; cursor: pointer; letter-spacing: 1px;
+    text-transform: uppercase; transition: all 0.2s;
+    box-shadow: 0 4px 15px var(--accent-dim);
+  }
+  .btn-topup:active { transform: scale(0.95); }
+
+  /* ====== SECTION HEADERS ====== */
+  .section-header {
+    display: flex; align-items: center; gap: 8px; margin: 22px 0 14px;
+    font-size: 10px; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase;
+  }
+  .section-header::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* ====== VPN PLAN CARDS ====== */
+  .plan-grid { display: flex; flex-direction: column; gap: 10px; }
+
+  .plan-card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;
+  }
+  .plan-card:active { transform: scale(0.98); border-color: var(--accent); }
+  .plan-card::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--accent); opacity: 0; transition: opacity 0.2s;
+  }
+  .plan-card:active::before { opacity: 1; }
+
+  .plan-card.featured {
+    border-color: var(--accent);
+    background: linear-gradient(135deg, var(--bg-card) 0%, rgba(34, 212, 94, 0.05) 100%);
+  }
+  .plan-card.featured::before { opacity: 1; }
+
+  .plan-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .plan-name { font-size: 14px; font-weight: 700; letter-spacing: 1px; }
+  .plan-badge {
+    font-size: 8px; padding: 3px 8px; border-radius: 4px;
+    letter-spacing: 1px; text-transform: uppercase; font-weight: 700;
+  }
+  .badge-free { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent); }
+  .badge-popular { background: var(--blue-dim); color: var(--blue); border: 1px solid var(--blue); }
+  .badge-save { background: var(--purple-dim); color: var(--purple); border: 1px solid var(--purple); }
+  .badge-best { background: var(--warning-dim); color: var(--warning); border: 1px solid var(--warning); }
+
+  .plan-desc { font-size: 11px; color: var(--text-secondary); margin-bottom: 10px; }
+  .plan-features { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .plan-feat { font-size: 10px; color: var(--text-dim); display: flex; align-items: center; gap: 4px; }
+  .plan-feat-val { color: var(--text-secondary); }
+  .plan-bottom { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid var(--border); }
+  .plan-price { font-size: 18px; font-weight: 700; color: var(--accent); }
+  .plan-price-old { font-size: 11px; color: var(--text-dim); text-decoration: line-through; margin-right: 6px; }
+  .plan-price-period { font-size: 10px; color: var(--text-dim); font-weight: 400; }
+  .plan-arrow { color: var(--text-dim); font-size: 14px; transition: transform 0.2s; }
+  .plan-card:active .plan-arrow { transform: translateX(4px); color: var(--accent); }
+
+  /* ====== PURCHASE SCREEN ====== */
+  .back-btn {
+    display: flex; align-items: center; gap: 6px; color: var(--text-secondary);
+    font-size: 11px; cursor: pointer; padding: 12px 0; letter-spacing: 1px;
+    font-family: 'JetBrains Mono', monospace; background: none; border: none;
+  }
+  .back-btn:active { color: var(--accent); }
+
+  .purchase-title { font-size: 16px; font-weight: 700; letter-spacing: 2px; margin-bottom: 4px; }
+  .purchase-subtitle { font-size: 11px; color: var(--text-secondary); margin-bottom: 16px; }
+
+  /* ====== COUNTRY SELECT ====== */
+  .country-list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
+  .country-item {
+    display: flex; align-items: center; gap: 10px; padding: 11px 14px;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .country-item:active { transform: scale(0.98); }
+  .country-item.selected { border-color: var(--accent); background: var(--accent-dim); }
+  .country-flag { font-size: 18px; }
+  .country-name { font-size: 12px; flex: 1; }
+  .country-item.selected .country-name { color: var(--accent); }
+  .country-check { color: var(--accent); font-size: 14px; opacity: 0; }
+  .country-item.selected .country-check { opacity: 1; }
+
+  /* ====== FORM ====== */
+  .form-group { margin-bottom: 14px; }
+  .form-label { font-size: 10px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; display: block; }
+
+  /* ====== SUMMARY BOX ====== */
+  .summary-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin: 16px 0; }
+  .summary-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 12px; }
+  .summary-row .label { color: var(--text-secondary); }
+  .summary-row .value { color: var(--text-primary); font-weight: 500; }
+  .summary-total { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 10px; font-size: 15px; font-weight: 700; }
+  .summary-total .value { color: var(--accent); }
+
+  /* ====== BUTTONS ====== */
+  .btn-action {
+    width: 100%; padding: 14px; background: var(--accent); color: var(--bg-primary);
+    border: none; border-radius: 10px; font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+    cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;
+    box-shadow: 0 4px 20px var(--accent-dim);
+  }
+  .btn-action:active { transform: scale(0.98); }
+  .btn-action:disabled { background: var(--border); color: var(--text-dim); cursor: not-allowed; box-shadow: none; }
+  .btn-action::after {
+    content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    animation: shimmer 3s infinite;
+  }
+  @keyframes shimmer { 0%{left:-100%}100%{left:100%} }
+
+  /* ====== BOTTOM NAV ====== */
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--bg-secondary); border-top: 1px solid var(--border);
+    display: flex; z-index: 200; padding-bottom: env(safe-area-inset-bottom, 0);
+    backdrop-filter: blur(10px);
+  }
+  .nav-item {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 10px 0; cursor: pointer; transition: all 0.15s;
+    border: none; background: none; font-family: 'JetBrains Mono', monospace;
+  }
+  .nav-icon { font-size: 18px; color: var(--text-dim); transition: color 0.15s; }
+  .nav-label { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; }
+  .nav-item.active .nav-icon, .nav-item.active .nav-label { color: var(--accent); }
+
+  /* ====== MY SUBSCRIPTIONS ====== */
+  .sub-item {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px; margin-bottom: 8px;
+  }
+  .sub-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .sub-plan { font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+  .sub-status { font-size: 9px; padding: 3px 8px; border-radius: 4px; letter-spacing: 1px; text-transform: uppercase; font-weight: 700; }
+  .status-active { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent); }
+  .status-expired { background: var(--error-dim); color: var(--error); border: 1px solid var(--error); }
+
+  .sub-key-box {
+    background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px 14px; font-size: 10px; margin-bottom: 10px; position: relative;
+    word-break: break-all;
+  }
+  .sub-key-box .key-label { color: var(--text-dim); margin-bottom: 4px; }
+  .sub-key-box .key-value { color: var(--accent); user-select: all; font-size: 11px; }
+  .btn-copy {
+    position: absolute; top: 8px; right: 8px;
+    background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary);
+    padding: 5px 10px; border-radius: 4px; font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; cursor: pointer; letter-spacing: 1px; text-transform: uppercase;
+  }
+  .btn-copy:active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+  .sub-meta { display: flex; gap: 16px; font-size: 10px; color: var(--text-dim); }
+  .sub-meta span { color: var(--text-secondary); }
+
+  /* ====== EMPTY STATE ====== */
+  .empty-state { text-align: center; padding: 50px 20px; }
+  .empty-icon { font-size: 44px; margin-bottom: 14px; opacity: 0.2; }
+  .empty-title { font-size: 14px; color: var(--text-secondary); margin-bottom: 6px; font-weight: 600; }
+  .empty-desc { font-size: 11px; color: var(--text-dim); line-height: 1.6; }
+
+  /* ====== TOP UP MODAL ====== */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7); z-index: 300; display: none;
+    align-items: flex-end; justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.active { display: flex; }
+  .modal-content {
+    background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 16px 16px 0 0; padding: 20px 16px; width: 100%; max-width: 480px;
+    animation: slideUp 0.3s ease; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0));
+  }
+  @keyframes slideUp { from{transform:translateY(100%)}to{transform:translateY(0)} }
+  .modal-handle { width: 40px; height: 4px; background: var(--border-active); border-radius: 2px; margin: 0 auto 16px; }
+  .modal-title { font-size: 15px; font-weight: 700; letter-spacing: 2px; margin-bottom: 4px; }
+  .modal-desc { font-size: 11px; color: var(--text-secondary); margin-bottom: 16px; }
+
+  .topup-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+  .topup-btn {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 8px; text-align: center; cursor: pointer; transition: all 0.15s;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .topup-btn:active { transform: scale(0.97); }
+  .topup-btn.selected { border-color: var(--accent); background: var(--accent-dim); }
+  .topup-btn .topup-val { font-size: 17px; font-weight: 700; margin-bottom: 2px; }
+  .topup-btn.selected .topup-val { color: var(--accent); }
+  .topup-btn .topup-cur { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; }
+
+  /* ====== TOAST ====== */
+  .toast {
+    position: fixed; top: 20px; left: 16px; right: 16px;
+    background: var(--bg-card); border: 1px solid var(--accent); border-radius: 10px;
+    padding: 12px 16px; z-index: 400; display: none; font-size: 12px; color: var(--accent);
+    box-shadow: 0 4px 20px var(--accent-dim);
+  }
+  .toast.show { display: block; animation: toastIn 0.3s ease; }
+  @keyframes toastIn { from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)} }
+
+  .loading-dots { display: inline-flex; gap: 4px; }
+  .loading-dots span { width: 4px; height: 4px; background: var(--accent); border-radius: 50%; animation: dotPulse 1.4s infinite ease-in-out; }
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dotPulse { 0%,80%,100%{opacity:0.2;transform:scale(0.8)}40%{opacity:1;transform:scale(1)} }
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<!-- ==================== MAIN / SHOP ==================== -->
+<div class="screen active" id="screenMain">
+  <div class="topbar">
+    <div class="topbar-boot">UNIDENTIFIED VPN v2.0 — ENCRYPTED CONNECTION</div>
+    <div class="topbar-title">
+      <span class="glitch accent" data-text="unidentified">unidentified</span>
+    </div>
+    <div class="topbar-subtitle">the secure vpn service</div>
+  </div>
+
+  <div class="status-line">
+    <div class="status-item"><div class="status-dot"></div><span class="plan-feat-val">ONLINE</span></div>
+    <div class="status-item"><span class="status-label">SERVERS:</span><span class="plan-feat-val">52</span></div>
+    <div class="status-item"><span class="status-label">COUNTRIES:</span><span class="plan-feat-val">30+</span></div>
+    <div class="status-item"><span class="status-label">UPTIME:</span><span class="plan-feat-val">99.8%</span></div>
+  </div>
+
+  <div class="profile-card">
+    <div class="profile-header">
+      <div class="profile-prompt" id="userName">Anonymous</div>
+      <div class="profile-id" id="userId">ID: —</div>
+    </div>
+    <div class="balance-section">
+      <div>
+        <div class="balance-label">Balance</div>
+        <div class="balance-amount"><span id="balanceAmount">0.00</span><span class="balance-currency">USDT</span></div>
+      </div>
+      <button class="btn-topup" onclick="openTopup()">+ TOP UP</button>
+    </div>
+  </div>
+
+  <div class="section-header">// choose your plan</div>
+
+  <div class="plan-grid">
+    <div class="plan-card" onclick="openPurchase('trial')">
+      <div class="plan-top">
+        <div class="plan-name">🆓 TRIAL</div>
+        <div class="plan-badge badge-free">FREE</div>
+      </div>
+      <div class="plan-desc">Попробуйте VPN бесплатно на 3 дня. Один раз на аккаунт.</div>
+      <div class="plan-bottom">
+        <div class="plan-price">$0.00<span class="plan-price-period"> / 3 дня</span></div>
+        <div class="plan-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="plan-card" onclick="openPurchase('month')">
+      <div class="plan-top">
+        <div class="plan-name">📅 1 МЕСЯЦ</div>
+      </div>
+      <div class="plan-desc">Полный доступ ко всем серверам. Безлимитный трафик.</div>
+      <div class="plan-bottom">
+        <div class="plan-price">$9.99<span class="plan-price-period"> / мес</span></div>
+        <div class="plan-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="plan-card featured" onclick="openPurchase('half_year')">
+      <div class="plan-top">
+        <div class="plan-name">🔥 6 МЕСЯЦЕВ</div>
+        <div class="plan-badge badge-popular">POPULAR</div>
+      </div>
+      <div class="plan-desc">Экономия 17%. Лучший выбор для постоянного использования.</div>
+      <div class="plan-bottom">
+        <div><span class="plan-price-old">$59.94</span><span class="plan-price">$49.99</span><span class="plan-price-period"> / 6 мес</span></div>
+        <div class="plan-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="plan-card" onclick="openPurchase('year')">
+      <div class="plan-top">
+        <div class="plan-name">⭐ 1 ГОД</div>
+        <div class="plan-badge badge-save">-33%</div>
+      </div>
+      <div class="plan-desc">Максимальная экономия. Забудьте о продлении на год.</div>
+      <div class="plan-bottom">
+        <div><span class="plan-price-old">$119.88</span><span class="plan-price">$79.99</span><span class="plan-price-period"> / год</span></div>
+        <div class="plan-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="plan-card" onclick="openPurchase('two_years')">
+      <div class="plan-top">
+        <div class="plan-name">💎 2 ГОДА</div>
+        <div class="plan-badge badge-best">BEST DEAL</div>
+      </div>
+      <div class="plan-desc">Лучшая цена. $5/мес — дешевле не бывает.</div>
+      <div class="plan-bottom">
+        <div><span class="plan-price-old">$239.76</span><span class="plan-price">$119.99</span><span class="plan-price-period"> / 2 года</span></div>
+        <div class="plan-arrow">→</div>
+      </div>
+    </div>
+  </div>
+  <div style="height: 20px;"></div>
+</div>
+
+<!-- ==================== PURCHASE ==================== -->
+<div class="screen" id="screenPurchase">
+  <div class="topbar">
+    <div class="topbar-boot">UNIDENTIFIED VPN — ORDER</div>
+    <div class="topbar-title" style="font-size: 15px;"><span class="accent">> </span>ОФОРМЛЕНИЕ</div>
+  </div>
+
+  <button class="back-btn" onclick="goBack()">← НАЗАД</button>
+  <div class="purchase-title" id="purchaseTitle">1 МЕСЯЦ</div>
+  <div class="purchase-subtitle" id="purchaseDesc">Полный доступ ко всем серверам</div>
+
+  <div class="form-group">
+    <div class="form-label">// Выберите сервер</div>
+    <div class="country-list" id="countryList">
+      <div class="country-item selected" data-country="auto" onclick="selectCountry(this)">
+        <span class="country-flag">🌍</span><span class="country-name">Автовыбор (быстрый)</span><span class="country-check">✓</span>
+      </div>
+      <div class="country-item" data-country="us" onclick="selectCountry(this)">
+        <span class="country-flag">🇺🇸</span><span class="country-name">United States</span><span class="country-check">✓</span>
+      </div>
+      <div class="country-item" data-country="de" onclick="selectCountry(this)">
+        <span class="country-flag">🇩🇪</span><span class="country-name">Germany</span><span class="country-check">✓</span>
+      </div>
+      <div class="country-item" data-country="nl" onclick="selectCountry(this)">
+        <span class="country-flag">🇳🇱</span><span class="country-name">Netherlands</span><span class="country-check">✓</span>
+      </div>
+      <div class="country-item" data-country="gb" onclick="selectCountry(this)">
+        <span class="country-flag">🇬🇧</span><span class="country-name">United Kingdom</span><span class="country-check">✓</span>
+      </div>
+      <div class="country-item" data-country="jp" onclick="selectCountry(this)">
+        <span class="country-flag">🇯🇵</span><span class="country-name">Japan</span><span class="country-check">✓</span>
+      </div>
+      <div class="country-item" data-country="sg" onclick="selectCountry(this)">
+        <span class="country-flag">🇸🇬</span><span class="country-name">Singapore</span><span class="country-check">✓</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="summary-box">
+    <div class="summary-row"><span class="label">Тариф:</span><span class="value" id="sumPlan">—</span></div>
+    <div class="summary-row"><span class="label">Срок:</span><span class="value" id="sumDuration">—</span></div>
+    <div class="summary-row"><span class="label">Сервер:</span><span class="value" id="sumServer">Авто</span></div>
+    <div class="summary-row summary-total"><span class="label">ИТОГО:</span><span class="value" id="sumTotal">$0.00</span></div>
+  </div>
+
+  <button class="btn-action" id="btnPay" onclick="processPayment()">▶ ОПЛАТИТЬ USDT</button>
+</div>
+
+<!-- ==================== MY SUBS ==================== -->
+<div class="screen" id="screenSubs">
+  <div class="topbar">
+    <div class="topbar-boot">UNIDENTIFIED VPN — SUBSCRIPTIONS</div>
+    <div class="topbar-title" style="font-size: 15px;"><span class="accent">> </span>МОИ ПОДПИСКИ</div>
+  </div>
+
+  <div class="status-line">
+    <div class="status-item"><span class="status-label">ACTIVE:</span><span class="plan-feat-val" id="activeCount">0</span></div>
+    <div class="status-item"><span class="status-label">EXPIRED:</span><span class="plan-feat-val" id="expiredCount">0</span></div>
+  </div>
+
+  <div id="subsList" style="margin-top: 14px;">
+    <div class="empty-state">
+      <div class="empty-icon">🔐</div>
+      <div class="empty-title">Нет активных подписок</div>
+      <div class="empty-desc">Выберите тариф на главной странице<br>и подключите VPN</div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PROFILE ==================== -->
+<div class="screen" id="screenProfile">
+  <div class="topbar">
+    <div class="topbar-boot">UNIDENTIFIED VPN — PROFILE</div>
+    <div class="topbar-title" style="font-size: 15px;"><span class="accent">> </span>ПРОФИЛЬ</div>
+  </div>
+
+  <div class="profile-card" style="margin-top: 14px;">
+    <div class="summary-row"><span class="label">Username:</span><span class="value" id="profName">Anonymous</span></div>
+    <div class="summary-row"><span class="label">User ID:</span><span class="value" id="profId">—</span></div>
+    <div class="summary-row"><span class="label">Баланс:</span><span class="value" style="color:var(--accent)" id="profBalance">0.00 USDT</span></div>
+    <div class="summary-row"><span class="label">Подписок:</span><span class="value" id="profSubs">0</span></div>
+  </div>
+
+  <div class="section-header">// действия</div>
+  <button class="btn-action" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);margin-bottom:8px;box-shadow:none;" onclick="openTopup()">+ ПОПОЛНИТЬ БАЛАНС</button>
+  <button class="btn-action" style="background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border);box-shadow:none;" onclick="contactSupport()">📩 ПОДДЕРЖКА</button>
+</div>
+
+<!-- ==================== TOP UP MODAL ==================== -->
+<div class="modal-overlay" id="topupModal">
+  <div class="modal-content">
+    <div class="modal-handle"></div>
+    <div class="modal-title">ПОПОЛНЕНИЕ БАЛАНСА</div>
+    <div class="modal-desc">Выберите сумму для оплаты через USDT (CryptoBot)</div>
+    <div class="topup-grid">
+      <div class="topup-btn" data-amount="5" onclick="selectTopup(this)"><div class="topup-val">$5</div><div class="topup-cur">USDT</div></div>
+      <div class="topup-btn selected" data-amount="10" onclick="selectTopup(this)"><div class="topup-val">$10</div><div class="topup-cur">USDT</div></div>
+      <div class="topup-btn" data-amount="25" onclick="selectTopup(this)"><div class="topup-val">$25</div><div class="topup-cur">USDT</div></div>
+      <div class="topup-btn" data-amount="50" onclick="selectTopup(this)"><div class="topup-val">$50</div><div class="topup-cur">USDT</div></div>
+      <div class="topup-btn" data-amount="100" onclick="selectTopup(this)"><div class="topup-val">$100</div><div class="topup-cur">USDT</div></div>
+      <div class="topup-btn" data-amount="200" onclick="selectTopup(this)"><div class="topup-val">$200</div><div class="topup-cur">USDT</div></div>
+    </div>
+    <button class="btn-action" onclick="processTopup()">▶ ОПЛАТИТЬ ЧЕРЕЗ CRYPTOBOT</button>
+    <button class="back-btn" style="width:100%;text-align:center;justify-content:center;margin-top:8px;" onclick="closeTopup()">ОТМЕНА</button>
+  </div>
+</div>
+
+<!-- ==================== BOTTOM NAV ==================== -->
+<div class="bottom-nav">
+  <button class="nav-item active" data-screen="screenMain" onclick="switchScreen('screenMain',this)"><span class="nav-icon">🏠</span><span class="nav-label">ТАРИФЫ</span></button>
+  <button class="nav-item" data-screen="screenSubs" onclick="switchScreen('screenSubs',this)"><span class="nav-icon">🔑</span><span class="nav-label">ПОДПИСКИ</span></button>
+  <button class="nav-item" data-screen="screenProfile" onclick="switchScreen('screenProfile',this)"><span class="nav-icon">👤</span><span class="nav-label">ПРОФИЛЬ</span></button>
+</div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+let userData = { id: null, username: 'Anonymous', balance: 0, subs: [] };
+
+const plans = {
+  trial:      { name: 'TRIAL (3 дня)',   days: 3,   price: 0,      label: '🆓 Пробный' },
+  month:      { name: '1 МЕСЯЦ',         days: 30,  price: 9.99,   label: '📅 1 месяц' },
+  half_year:  { name: '6 МЕСЯЦЕВ',       days: 180, price: 49.99,  label: '🔥 6 месяцев' },
+  year:       { name: '1 ГОД',           days: 365, price: 79.99,  label: '⭐ 1 год' },
+  two_years:  { name: '2 ГОДА',          days: 730, price: 119.99, label: '💎 2 года' },
+};
+
+let purchaseState = { plan: null, country: 'auto', total: 0 };
+let selectedTopup = 10;
+let currentScreen = 'screenMain';
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (tg) {
+    tg.ready(); tg.expand();
+    tg.setHeaderColor('#0b0e14'); tg.setBackgroundColor('#0b0e14');
+    if (tg.initDataUnsafe?.user) {
+      const u = tg.initDataUnsafe.user;
+      userData.id = u.id;
+      userData.username = u.username || u.first_name || 'Anonymous';
+      document.getElementById('userName').textContent = userData.username;
+      document.getElementById('userId').textContent = 'ID: ' + u.id;
+      document.getElementById('profName').textContent = userData.username;
+      document.getElementById('profId').textContent = u.id;
+    }
+  }
+  loadData();
+});
+
+function switchScreen(id, nav) {
+  if (id === currentScreen) return;
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (nav) nav.classList.add('active');
+  currentScreen = id;
+  if (tg) tg.HapticFeedback?.impactOccurred('light');
+}
+
+function goBack() {
+  switchScreen('screenMain', document.querySelector('.nav-item[data-screen="screenMain"]'));
+}
+
+function openPurchase(planKey) {
+  const plan = plans[planKey];
+  purchaseState.plan = planKey;
+  purchaseState.total = plan.price;
+
+  document.getElementById('purchaseTitle').textContent = plan.name;
+  document.getElementById('purchaseDesc').textContent = planKey === 'trial' ? 'Бесплатный пробный доступ на 3 дня' : 'Полный доступ ко всем серверам и функциям';
+  document.getElementById('sumPlan').textContent = plan.label;
+  document.getElementById('sumDuration').textContent = plan.days + ' дней';
+  document.getElementById('sumServer').textContent = 'Авто';
+  document.getElementById('sumTotal').textContent = '$' + plan.price.toFixed(2) + ' USDT';
+
+  document.getElementById('btnPay').textContent = plan.price === 0 ? '▶ АКТИВИРОВАТЬ БЕСПЛАТНО' : '▶ ОПЛАТИТЬ USDT';
+
+  switchScreen('screenPurchase', null);
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  if (tg) tg.HapticFeedback?.impactOccurred('medium');
+}
+
+function selectCountry(el) {
+  document.querySelectorAll('.country-item').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  purchaseState.country = el.dataset.country;
+  const name = el.querySelector('.country-name').textContent;
+  document.getElementById('sumServer').textContent = name;
+  if (tg) tg.HapticFeedback?.selectionChanged();
+}
+
+function processPayment() {
+  const plan = plans[purchaseState.plan];
+  if (plan.price > 0 && plan.price > userData.balance) {
+    showToast('❌ Недостаточно средств. Пополните баланс.');
+    if (tg) tg.HapticFeedback?.notificationOccurred('error');
+    return;
+  }
+
+  const btn = document.getElementById('btnPay');
+  btn.disabled = true;
+  btn.innerHTML = 'ОБРАБОТКА <span class="loading-dots"><span></span><span></span><span></span></span>';
+  if (tg) tg.HapticFeedback?.notificationOccurred('success');
+
+  setTimeout(() => {
+    if (plan.price > 0) { userData.balance -= plan.price; updateBalanceDisplay(); }
+
+    const sub = {
+      plan: plan.label, name: plan.name,
+      server: purchaseState.country.toUpperCase(),
+      vpnKey: generateVPNKey(),
+      expires: new Date(Date.now() + plan.days * 86400000).toLocaleDateString(),
+      status: 'active'
+    };
+    userData.subs.push(sub);
+    saveData(); renderSubs();
+
+    btn.disabled = false;
+    btn.textContent = plan.price === 0 ? '▶ АКТИВИРОВАТЬ БЕСПЛАТНО' : '▶ ОПЛАТИТЬ USDT';
+    showToast('✅ Подписка активирована!');
+    switchScreen('screenSubs', document.querySelector('.nav-item[data-screen="screenSubs"]'));
+  }, 2000);
+}
+
+function generateVPNKey() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let key = 'wg://';
+  for (let i = 0; i < 44; i++) key += chars.charAt(Math.floor(Math.random() * chars.length));
+  return key;
+}
+
+function renderSubs() {
+  const container = document.getElementById('subsList');
+  const active = userData.subs.filter(s => s.status === 'active');
+  const expired = userData.subs.filter(s => s.status === 'expired');
+  document.getElementById('activeCount').textContent = active.length;
+  document.getElementById('expiredCount').textContent = expired.length;
+  document.getElementById('profSubs').textContent = userData.subs.length;
+
+  if (!userData.subs.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔐</div><div class="empty-title">Нет активных подписок</div><div class="empty-desc">Выберите тариф на главной странице</div></div>';
+    return;
+  }
+
+  container.innerHTML = userData.subs.map((s, i) => `
+    <div class="sub-item">
+      <div class="sub-top">
+        <div class="sub-plan">${s.plan}</div>
+        <div class="sub-status ${s.status === 'active' ? 'status-active' : 'status-expired'}">${s.status === 'active' ? 'ACTIVE' : 'EXPIRED'}</div>
+      </div>
+      <div class="sub-key-box">
+        <button class="btn-copy" onclick="copyKey(${i})">COPY</button>
+        <div class="key-label">VPN KEY:</div>
+        <div class="key-value">${s.vpnKey}</div>
+      </div>
+      <div class="sub-meta">
+        <div>СЕРВЕР: <span>${s.server}</span></div>
+        <div>ИСТЕКАЕТ: <span>${s.expires}</span></div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function copyKey(i) {
+  const key = userData.subs[i].vpnKey;
+  navigator.clipboard?.writeText(key);
+  showToast('📋 VPN-ключ скопирован!');
+  if (tg) tg.HapticFeedback?.notificationOccurred('success');
+}
+
+function openTopup() { document.getElementById('topupModal').classList.add('active'); }
+function closeTopup() { document.getElementById('topupModal').classList.remove('active'); }
+
+function selectTopup(el) {
+  document.querySelectorAll('.topup-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedTopup = parseInt(el.dataset.amount);
+  if (tg) tg.HapticFeedback?.selectionChanged();
+}
+
+function processTopup() {
+  closeTopup();
+  if (tg && userData.id) {
+    tg.sendData(JSON.stringify({ action: 'topup', amount: selectedTopup, user_id: userData.id }));
+    showToast('⏳ Инвойс создан. Завершите оплату в CryptoBot.');
+  } else {
+    userData.balance += selectedTopup;
+    updateBalanceDisplay(); saveData();
+    showToast('✅ +$' + selectedTopup + ' USDT (демо)');
+  }
+}
+
+function contactSupport() {
+  if (tg) tg.sendData(JSON.stringify({ action: 'support' }));
+  showToast('📩 Открываем чат поддержки...');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function updateBalanceDisplay() {
+  const b = userData.balance.toFixed(2);
+  document.getElementById('balanceAmount').textContent = b;
+  document.getElementById('profBalance').textContent = b + ' USDT';
+}
+
+function saveData() { try { localStorage.setItem('unidentified_vpn', JSON.stringify(userData)); } catch(e) {} }
+function loadData() {
+  try {
+    const s = localStorage.getItem('unidentified_vpn');
+    if (s) { const p = JSON.parse(s); userData.balance = p.balance || 0; userData.subs = p.subs || []; updateBalanceDisplay(); renderSubs(); }
+  } catch(e) {}
+}
+
+document.getElementById('topupModal').addEventListener('click', function(e) { if (e.target === this) closeTopup(); });
+</script>
+</body>
+</html>
