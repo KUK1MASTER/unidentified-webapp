@@ -1,0 +1,1838 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>UNIDENTIFIED — Proxy Service</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+
+  :root {
+    --bg-primary: #0a0a0a;
+    --bg-secondary: #111111;
+    --bg-card: #141414;
+    --bg-card-hover: #1a1a1a;
+    --border: #1e1e1e;
+    --border-active: #333333;
+    --text-primary: #e0e0e0;
+    --text-secondary: #707070;
+    --text-dim: #3a3a3a;
+    --accent: #00ff41;
+    --accent-dim: #00ff4120;
+    --accent-mid: #00ff4150;
+    --error: #ff3333;
+    --error-dim: #ff333320;
+    --warning: #ffaa00;
+    --warning-dim: #ffaa0020;
+    --blue: #0088ff;
+    --blue-dim: #0088ff20;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* ====== SCANLINE + CRT EFFECT ====== */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 255, 65, 0.015) 2px,
+      rgba(0, 255, 65, 0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%);
+    pointer-events: none;
+    z-index: 9998;
+  }
+
+  /* ====== SCROLLBAR ====== */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg-primary); }
+  ::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+
+  /* ====== SCREEN CONTAINER ====== */
+  .screen {
+    display: none;
+    flex-direction: column;
+    min-height: 100vh;
+    padding: 0 16px 100px;
+    animation: screenIn 0.3s ease;
+  }
+  .screen.active {
+    display: flex;
+  }
+
+  @keyframes screenIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ====== TOP BAR ====== */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 0;
+    margin: 0 -16px;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .topbar-boot {
+    color: var(--text-dim);
+    font-size: 10px;
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+
+  .topbar-title {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: lowercase;
+    color: var(--text-primary);
+  }
+
+  .topbar-title .accent {
+    color: var(--accent);
+    text-shadow: 0 0 20px var(--accent-dim);
+  }
+
+  .topbar-subtitle {
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* ====== STATUS LINE ====== */
+  .status-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-secondary);
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    animation: pulse 2s infinite;
+    flex-shrink: 0;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .status-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .status-label {
+    color: var(--text-dim);
+  }
+
+  /* ====== PROFILE CARD ====== */
+  .profile-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    margin-top: 12px;
+  }
+
+  .profile-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .profile-prompt {
+    font-size: 11px;
+    color: var(--accent);
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .profile-prompt::before {
+    content: 'C:\\Users\\';
+    color: var(--text-dim);
+  }
+
+  .profile-prompt::after {
+    content: '>';
+    color: var(--text-dim);
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  .profile-id {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .balance-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+
+  .balance-label {
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .balance-amount {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -1px;
+  }
+
+  .balance-currency {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-left: 4px;
+  }
+
+  .btn-topup {
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
+
+  .btn-topup:active {
+    background: var(--accent-mid);
+    transform: scale(0.97);
+  }
+
+  /* ====== SECTION HEADERS ====== */
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 20px 0 12px;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .section-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ====== PROXY PRODUCT CARDS ====== */
+  .proxy-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .proxy-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .proxy-card:active {
+    transform: scale(0.98);
+    border-color: var(--accent);
+  }
+
+  .proxy-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .proxy-card:active::before {
+    opacity: 1;
+  }
+
+  .proxy-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .proxy-type {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 1px;
+  }
+
+  .proxy-badge {
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  .badge-popular {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+
+  .badge-fast {
+    background: var(--blue-dim);
+    color: var(--blue);
+    border: 1px solid var(--blue);
+  }
+
+  .badge-premium {
+    background: var(--warning-dim);
+    color: var(--warning);
+    border: 1px solid var(--warning);
+  }
+
+  .proxy-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
+
+  .proxy-specs {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .proxy-spec {
+    font-size: 10px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .proxy-spec-val {
+    color: var(--text-secondary);
+  }
+
+  .proxy-card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+
+  .proxy-price {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .proxy-price-period {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-weight: 400;
+  }
+
+  .proxy-arrow {
+    color: var(--text-dim);
+    font-size: 14px;
+    transition: transform 0.2s;
+  }
+
+  .proxy-card:active .proxy-arrow {
+    transform: translateX(4px);
+    color: var(--accent);
+  }
+
+  /* ====== PURCHASE SCREEN ====== */
+  .back-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 12px 0;
+    letter-spacing: 1px;
+    font-family: 'JetBrains Mono', monospace;
+    background: none;
+    border: none;
+  }
+
+  .back-btn:active {
+    color: var(--accent);
+  }
+
+  .purchase-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+
+  .purchase-subtitle {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+
+  /* ====== FORM ELEMENTS ====== */
+  .form-group {
+    margin-bottom: 14px;
+  }
+
+  .form-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    display: block;
+  }
+
+  .option-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .option-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .option-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .option-btn:active {
+    transform: scale(0.97);
+  }
+
+  .option-btn.selected {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .option-btn .opt-main {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+  }
+
+  .option-btn.selected .opt-main {
+    color: var(--accent);
+  }
+
+  .option-btn .opt-sub {
+    font-size: 9px;
+    color: var(--text-dim);
+  }
+
+  .country-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .country-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .country-item:active {
+    transform: scale(0.98);
+  }
+
+  .country-item.selected {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .country-flag {
+    font-size: 18px;
+  }
+
+  .country-name {
+    font-size: 12px;
+    color: var(--text-primary);
+    flex: 1;
+  }
+
+  .country-item.selected .country-name {
+    color: var(--accent);
+  }
+
+  .country-check {
+    color: var(--accent);
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .country-item.selected .country-check {
+    opacity: 1;
+  }
+
+  /* ====== SUMMARY ====== */
+  .summary-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin: 16px 0;
+  }
+
+  .summary-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    font-size: 12px;
+  }
+
+  .summary-row .label {
+    color: var(--text-secondary);
+  }
+
+  .summary-row .value {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .summary-total {
+    border-top: 1px solid var(--border);
+    margin-top: 8px;
+    padding-top: 10px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .summary-total .value {
+    color: var(--accent);
+  }
+
+  /* ====== BIG ACTION BUTTON ====== */
+  .btn-action {
+    width: 100%;
+    padding: 14px;
+    background: var(--accent);
+    color: var(--bg-primary);
+    border: none;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-action:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+
+  .btn-action:disabled {
+    background: var(--border);
+    color: var(--text-dim);
+    cursor: not-allowed;
+  }
+
+  .btn-action::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    animation: shimmer 3s infinite;
+  }
+
+  @keyframes shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+  }
+
+  /* ====== BOTTOM NAV ====== */
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    display: flex;
+    z-index: 200;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 0;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: none;
+    background: none;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .nav-icon {
+    font-size: 18px;
+    color: var(--text-dim);
+    transition: color 0.15s;
+  }
+
+  .nav-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: color 0.15s;
+  }
+
+  .nav-item.active .nav-icon,
+  .nav-item.active .nav-label {
+    color: var(--accent);
+  }
+
+  /* ====== MY PROXIES LIST ====== */
+  .proxy-list-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+  }
+
+  .proxy-list-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .proxy-list-type {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+  }
+
+  .proxy-status {
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  .status-active {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+
+  .status-expired {
+    background: var(--error-dim);
+    color: var(--error);
+    border: 1px solid var(--error);
+  }
+
+  .proxy-credentials {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 11px;
+    margin-bottom: 8px;
+    position: relative;
+  }
+
+  .proxy-cred-line {
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+  }
+
+  .proxy-cred-line span {
+    color: var(--accent);
+    user-select: all;
+  }
+
+  .btn-copy {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    cursor: pointer;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .btn-copy:active {
+    background: var(--accent-dim);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .proxy-list-meta {
+    display: flex;
+    gap: 16px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .proxy-list-meta span {
+    color: var(--text-secondary);
+  }
+
+  /* ====== EMPTY STATE ====== */
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+  }
+
+  .empty-icon {
+    font-size: 40px;
+    margin-bottom: 12px;
+    opacity: 0.3;
+  }
+
+  .empty-title {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+
+  .empty-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* ====== TOPUP MODAL ====== */
+  .modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.8);
+    z-index: 300;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    animation: fadeIn 0.2s;
+  }
+
+  .modal-overlay.active {
+    display: flex;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .modal-content {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px 12px 0 0;
+    padding: 20px 16px;
+    width: 100%;
+    max-width: 480px;
+    animation: slideUp 0.3s ease;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0));
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  .modal-handle {
+    width: 40px;
+    height: 4px;
+    background: var(--border-active);
+    border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+
+  .modal-title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+
+  .modal-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+
+  .topup-amounts {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .topup-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .topup-btn:active {
+    transform: scale(0.97);
+  }
+
+  .topup-btn.selected {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .topup-btn .topup-val {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+  }
+
+  .topup-btn.selected .topup-val {
+    color: var(--accent);
+  }
+
+  .topup-btn .topup-cur {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  /* ====== TERMINAL TYPING EFFECT ====== */
+  .terminal-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0;
+    font-size: 11px;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  .terminal-line .prompt {
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  .terminal-line .cmd {
+    color: var(--text-secondary);
+  }
+
+  .terminal-line .output {
+    color: var(--text-dim);
+  }
+
+  /* ====== LOADING ANIMATION ====== */
+  .loading-dots {
+    display: inline-flex;
+    gap: 4px;
+  }
+
+  .loading-dots span {
+    width: 4px;
+    height: 4px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: dotPulse 1.4s infinite ease-in-out;
+  }
+
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes dotPulse {
+    0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1); }
+  }
+
+  /* ====== NOTIFICATION TOAST ====== */
+  .toast {
+    position: fixed;
+    top: 20px;
+    left: 16px;
+    right: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 12px 16px;
+    z-index: 400;
+    display: none;
+    animation: toastIn 0.3s ease;
+    font-size: 12px;
+    color: var(--accent);
+  }
+
+  .toast.show {
+    display: block;
+  }
+
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ====== GLITCH EFFECT ON TITLE ====== */
+  .glitch {
+    position: relative;
+  }
+
+  .glitch::before,
+  .glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .glitch::before {
+    animation: glitch1 3s infinite;
+    color: #ff0040;
+    z-index: -1;
+  }
+
+  .glitch::after {
+    animation: glitch2 3s infinite;
+    color: #0ff;
+    z-index: -2;
+  }
+
+  @keyframes glitch1 {
+    0%, 93%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+    94% { clip-path: inset(20% 0 40% 0); transform: translate(-2px, 1px); }
+    96% { clip-path: inset(60% 0 10% 0); transform: translate(2px, -1px); }
+    98% { clip-path: inset(40% 0 30% 0); transform: translate(-1px, 2px); }
+  }
+
+  @keyframes glitch2 {
+    0%, 91%, 100% { clip-path: inset(0 0 0 0); transform: translate(0); }
+    92% { clip-path: inset(30% 0 20% 0); transform: translate(2px, -1px); }
+    95% { clip-path: inset(10% 0 60% 0); transform: translate(-2px, 1px); }
+    97% { clip-path: inset(50% 0 20% 0); transform: translate(1px, -2px); }
+  }
+
+  /* ====== ERROR 404 DECORATIONS ====== */
+  .decoration-404 {
+    position: fixed;
+    color: var(--text-dim);
+    font-size: 10px;
+    font-family: 'Share Tech Mono', monospace;
+    opacity: 0.15;
+    pointer-events: none;
+    z-index: 0;
+    letter-spacing: 2px;
+  }
+
+  /* ====== QUESTION MARKS BG ====== */
+  .bg-pattern {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    z-index: -1;
+    overflow: hidden;
+    opacity: 0.03;
+  }
+
+  .bg-pattern span {
+    position: absolute;
+    color: var(--text-primary);
+    font-size: 60px;
+    font-weight: 700;
+    font-family: serif;
+  }
+</style>
+</head>
+<body>
+
+<!-- Background decorations -->
+<div class="bg-pattern" id="bgPattern"></div>
+
+<!-- Toast notification -->
+<div class="toast" id="toast"></div>
+
+<!-- ==================== MAIN SCREEN ==================== -->
+<div class="screen active" id="screenMain">
+  <div class="topbar">
+    <div class="topbar-boot">UNIDENTIFIED VPN CONNECT 1.0 — (c) Unknown Corporation</div>
+    <div class="topbar-title">
+      <span class="glitch accent" data-text="unidentified">unidentified</span>
+    </div>
+    <div class="topbar-subtitle">the secure proxy service</div>
+  </div>
+
+  <div class="status-line">
+    <div class="status-item">
+      <div class="status-dot"></div>
+      <span class="proxy-spec-val">ONLINE</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">NODES:</span>
+      <span class="proxy-spec-val">1,247</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">UPTIME:</span>
+      <span class="proxy-spec-val">99.8%</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">PING:</span>
+      <span class="proxy-spec-val">~12ms</span>
+    </div>
+  </div>
+
+  <!-- Profile card -->
+  <div class="profile-card">
+    <div class="profile-header">
+      <div class="profile-prompt" id="userName">Anonymous</div>
+      <div class="profile-id" id="userId">ID: —</div>
+    </div>
+    <div class="balance-section">
+      <div>
+        <div class="balance-label">Balance</div>
+        <div class="balance-amount">
+          <span id="balanceAmount">0.00</span>
+          <span class="balance-currency">USDT</span>
+        </div>
+      </div>
+      <button class="btn-topup" onclick="openTopup()">+ TOP UP</button>
+    </div>
+  </div>
+
+  <!-- Proxy products -->
+  <div class="section-header">// SELECT PROXY TYPE</div>
+
+  <div class="proxy-grid">
+    <div class="proxy-card" onclick="openPurchase('residential')">
+      <div class="proxy-card-top">
+        <div class="proxy-type">RESIDENTIAL</div>
+        <div class="proxy-badge badge-popular">POPULAR</div>
+      </div>
+      <div class="proxy-desc">Real residential IPs from ISPs. Best for social media, e-commerce, web scraping.</div>
+      <div class="proxy-specs">
+        <div class="proxy-spec">PROTO: <span class="proxy-spec-val">HTTP/SOCKS5</span></div>
+        <div class="proxy-spec">ROTATION: <span class="proxy-spec-val">AUTO</span></div>
+      </div>
+      <div class="proxy-card-bottom">
+        <div class="proxy-price">$2.50<span class="proxy-price-period"> / GB</span></div>
+        <div class="proxy-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="proxy-card" onclick="openPurchase('datacenter')">
+      <div class="proxy-card-top">
+        <div class="proxy-type">DATACENTER</div>
+        <div class="proxy-badge badge-fast">FAST</div>
+      </div>
+      <div class="proxy-desc">High-speed datacenter IPs. Best for bulk operations, automation, fast tasks.</div>
+      <div class="proxy-specs">
+        <div class="proxy-spec">PROTO: <span class="proxy-spec-val">HTTP/SOCKS5</span></div>
+        <div class="proxy-spec">SPEED: <span class="proxy-spec-val">1GBPS</span></div>
+      </div>
+      <div class="proxy-card-bottom">
+        <div class="proxy-price">$1.20<span class="proxy-price-period"> / proxy/mo</span></div>
+        <div class="proxy-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="proxy-card" onclick="openPurchase('mobile')">
+      <div class="proxy-card-top">
+        <div class="proxy-type">MOBILE</div>
+        <div class="proxy-badge badge-premium">PREMIUM</div>
+      </div>
+      <div class="proxy-desc">Real mobile carrier IPs (3G/4G/5G). Maximum trust level for social platforms.</div>
+      <div class="proxy-specs">
+        <div class="proxy-spec">PROTO: <span class="proxy-spec-val">HTTP/SOCKS5</span></div>
+        <div class="proxy-spec">CARRIERS: <span class="proxy-spec-val">50+</span></div>
+      </div>
+      <div class="proxy-card-bottom">
+        <div class="proxy-price">$4.50<span class="proxy-price-period"> / GB</span></div>
+        <div class="proxy-arrow">→</div>
+      </div>
+    </div>
+
+    <div class="proxy-card" onclick="openPurchase('static')">
+      <div class="proxy-card-top">
+        <div class="proxy-type">STATIC ISP</div>
+      </div>
+      <div class="proxy-desc">Static residential IPs with dedicated allocation. Long sessions, stable connection.</div>
+      <div class="proxy-specs">
+        <div class="proxy-spec">PROTO: <span class="proxy-spec-val">HTTP/SOCKS5</span></div>
+        <div class="proxy-spec">SESSION: <span class="proxy-spec-val">UNLIMITED</span></div>
+      </div>
+      <div class="proxy-card-bottom">
+        <div class="proxy-price">$3.00<span class="proxy-price-period"> / proxy/mo</span></div>
+        <div class="proxy-arrow">→</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 20px;"></div>
+</div>
+
+<!-- ==================== PURCHASE SCREEN ==================== -->
+<div class="screen" id="screenPurchase">
+  <div class="topbar">
+    <div class="topbar-boot">UNIDENTIFIED VPN CONNECT 1.0 — ORDER MODULE</div>
+    <div class="topbar-title" style="font-size: 14px;">
+      <span class="accent">> </span>NEW ORDER
+    </div>
+  </div>
+
+  <button class="back-btn" onclick="goBack()">← BACK</button>
+
+  <div class="purchase-title" id="purchaseType">RESIDENTIAL PROXY</div>
+  <div class="purchase-subtitle" id="purchaseDesc">Select configuration for your proxy</div>
+
+  <!-- Country Selection -->
+  <div class="form-group">
+    <div class="form-label">// Country</div>
+    <div class="country-list" id="countryList">
+      <div class="country-item selected" data-country="us" onclick="selectCountry(this)">
+        <span class="country-flag">🇺🇸</span>
+        <span class="country-name">United States</span>
+        <span class="country-check">✓</span>
+      </div>
+      <div class="country-item" data-country="de" onclick="selectCountry(this)">
+        <span class="country-flag">🇩🇪</span>
+        <span class="country-name">Germany</span>
+        <span class="country-check">✓</span>
+      </div>
+      <div class="country-item" data-country="gb" onclick="selectCountry(this)">
+        <span class="country-flag">🇬🇧</span>
+        <span class="country-name">United Kingdom</span>
+        <span class="country-check">✓</span>
+      </div>
+      <div class="country-item" data-country="nl" onclick="selectCountry(this)">
+        <span class="country-flag">🇳🇱</span>
+        <span class="country-name">Netherlands</span>
+        <span class="country-check">✓</span>
+      </div>
+      <div class="country-item" data-country="fr" onclick="selectCountry(this)">
+        <span class="country-flag">🇫🇷</span>
+        <span class="country-name">France</span>
+        <span class="country-check">✓</span>
+      </div>
+      <div class="country-item" data-country="ru" onclick="selectCountry(this)">
+        <span class="country-flag">🇷🇺</span>
+        <span class="country-name">Russia</span>
+        <span class="country-check">✓</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Duration -->
+  <div class="form-group" id="durationGroup">
+    <div class="form-label">// Duration</div>
+    <div class="option-grid">
+      <div class="option-btn" data-duration="7" onclick="selectDuration(this)">
+        <div class="opt-main">7 days</div>
+        <div class="opt-sub">TRIAL</div>
+      </div>
+      <div class="option-btn selected" data-duration="30" onclick="selectDuration(this)">
+        <div class="opt-main">30 days</div>
+        <div class="opt-sub">STANDARD</div>
+      </div>
+      <div class="option-btn" data-duration="90" onclick="selectDuration(this)">
+        <div class="opt-main">90 days</div>
+        <div class="opt-sub">-15%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quantity -->
+  <div class="form-group" id="quantityGroup">
+    <div class="form-label">// Quantity</div>
+    <div class="option-grid">
+      <div class="option-btn selected" data-qty="1" onclick="selectQty(this)">
+        <div class="opt-main">×1</div>
+      </div>
+      <div class="option-btn" data-qty="5" onclick="selectQty(this)">
+        <div class="opt-main">×5</div>
+        <div class="opt-sub">-5%</div>
+      </div>
+      <div class="option-btn" data-qty="10" onclick="selectQty(this)">
+        <div class="opt-main">×10</div>
+        <div class="opt-sub">-10%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bandwidth (for residential/mobile) -->
+  <div class="form-group" id="bandwidthGroup">
+    <div class="form-label">// Bandwidth</div>
+    <div class="option-grid">
+      <div class="option-btn" data-bw="1" onclick="selectBandwidth(this)">
+        <div class="opt-main">1 GB</div>
+      </div>
+      <div class="option-btn selected" data-bw="5" onclick="selectBandwidth(this)">
+        <div class="opt-main">5 GB</div>
+        <div class="opt-sub">POPULAR</div>
+      </div>
+      <div class="option-btn" data-bw="10" onclick="selectBandwidth(this)">
+        <div class="opt-main">10 GB</div>
+        <div class="opt-sub">-10%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Summary -->
+  <div class="summary-box">
+    <div class="terminal-line">
+      <span class="prompt">$</span>
+      <span class="cmd">calculate --order</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Type:</span>
+      <span class="value" id="sumType">RESIDENTIAL</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Country:</span>
+      <span class="value" id="sumCountry">US</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Duration:</span>
+      <span class="value" id="sumDuration">30 days</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Quantity:</span>
+      <span class="value" id="sumQty">×1</span>
+    </div>
+    <div class="summary-row summary-total">
+      <span class="label">TOTAL:</span>
+      <span class="value" id="sumTotal">$12.50 USDT</span>
+    </div>
+  </div>
+
+  <button class="btn-action" id="btnPay" onclick="processPayment()">
+    ▶ PAY WITH USDT
+  </button>
+</div>
+
+<!-- ==================== MY PROXIES SCREEN ==================== -->
+<div class="screen" id="screenProxies">
+  <div class="topbar">
+    <div class="topbar-boot">UNIDENTIFIED VPN CONNECT 1.0 — PROXY MANAGER</div>
+    <div class="topbar-title" style="font-size: 14px;">
+      <span class="accent">> </span>MY PROXIES
+    </div>
+  </div>
+
+  <div class="status-line">
+    <div class="status-item">
+      <span class="status-label">ACTIVE:</span>
+      <span class="proxy-spec-val" id="activeCount">0</span>
+    </div>
+    <div class="status-item">
+      <span class="status-label">EXPIRED:</span>
+      <span class="proxy-spec-val" id="expiredCount">0</span>
+    </div>
+  </div>
+
+  <div id="proxiesList" style="margin-top: 12px;">
+    <div class="empty-state">
+      <div class="empty-icon">∅</div>
+      <div class="empty-title">No proxies yet</div>
+      <div class="empty-desc">
+        <span style="color: var(--accent);">C:\></span> Purchase your first proxy<br>
+        to see it listed here
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== PROFILE SCREEN ==================== -->
+<div class="screen" id="screenProfile">
+  <div class="topbar">
+    <div class="topbar-boot">UNIDENTIFIED VPN CONNECT 1.0 — USER PROFILE</div>
+    <div class="topbar-title" style="font-size: 14px;">
+      <span class="accent">> </span>PROFILE
+    </div>
+  </div>
+
+  <div class="profile-card" style="margin-top: 12px;">
+    <div class="terminal-line">
+      <span class="prompt">$</span>
+      <span class="cmd">whoami</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Username:</span>
+      <span class="value" id="profName">Anonymous</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">User ID:</span>
+      <span class="value" id="profId">—</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Joined:</span>
+      <span class="value" id="profJoined">—</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Balance:</span>
+      <span class="value" style="color: var(--accent);" id="profBalance">0.00 USDT</span>
+    </div>
+    <div class="summary-row">
+      <span class="label">Total Orders:</span>
+      <span class="value" id="profOrders">0</span>
+    </div>
+  </div>
+
+  <div class="section-header">// RECENT TRANSACTIONS</div>
+
+  <div id="transactionsList">
+    <div class="empty-state">
+      <div class="empty-icon">◇</div>
+      <div class="empty-title">No transactions</div>
+      <div class="empty-desc">Your transaction history<br>will appear here</div>
+    </div>
+  </div>
+
+  <div class="section-header">// ACTIONS</div>
+
+  <button class="btn-action" style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); margin-bottom: 8px;" onclick="openTopup()">
+    + TOP UP BALANCE
+  </button>
+  <button class="btn-action" style="background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border);" onclick="contactSupport()">
+    ? CONTACT SUPPORT
+  </button>
+</div>
+
+<!-- ==================== TOP UP MODAL ==================== -->
+<div class="modal-overlay" id="topupModal">
+  <div class="modal-content">
+    <div class="modal-handle"></div>
+    <div class="modal-title">TOP UP BALANCE</div>
+    <div class="modal-desc">Select amount to add via USDT (CryptoBot)</div>
+
+    <div class="topup-amounts">
+      <div class="topup-btn" data-amount="5" onclick="selectTopup(this)">
+        <div class="topup-val">$5</div>
+        <div class="topup-cur">USDT</div>
+      </div>
+      <div class="topup-btn selected" data-amount="10" onclick="selectTopup(this)">
+        <div class="topup-val">$10</div>
+        <div class="topup-cur">USDT</div>
+      </div>
+      <div class="topup-btn" data-amount="25" onclick="selectTopup(this)">
+        <div class="topup-val">$25</div>
+        <div class="topup-cur">USDT</div>
+      </div>
+      <div class="topup-btn" data-amount="50" onclick="selectTopup(this)">
+        <div class="topup-val">$50</div>
+        <div class="topup-cur">USDT</div>
+      </div>
+      <div class="topup-btn" data-amount="100" onclick="selectTopup(this)">
+        <div class="topup-val">$100</div>
+        <div class="topup-cur">USDT</div>
+      </div>
+      <div class="topup-btn" data-amount="200" onclick="selectTopup(this)">
+        <div class="topup-val">$200</div>
+        <div class="topup-cur">USDT</div>
+      </div>
+    </div>
+
+    <button class="btn-action" onclick="processTopup()">
+      ▶ PAY VIA CRYPTOBOT
+    </button>
+
+    <button class="back-btn" style="width: 100%; text-align: center; justify-content: center; margin-top: 8px;" onclick="closeTopup()">
+      CANCEL
+    </button>
+  </div>
+</div>
+
+<!-- ==================== BOTTOM NAVIGATION ==================== -->
+<div class="bottom-nav">
+  <button class="nav-item active" data-screen="screenMain" onclick="switchScreen('screenMain', this)">
+    <span class="nav-icon">⬡</span>
+    <span class="nav-label">SHOP</span>
+  </button>
+  <button class="nav-item" data-screen="screenProxies" onclick="switchScreen('screenProxies', this)">
+    <span class="nav-icon">◈</span>
+    <span class="nav-label">PROXIES</span>
+  </button>
+  <button class="nav-item" data-screen="screenProfile" onclick="switchScreen('screenProfile', this)">
+    <span class="nav-icon">◉</span>
+    <span class="nav-label">PROFILE</span>
+  </button>
+</div>
+
+<script>
+  // ====== TELEGRAM WEB APP ======
+  const tg = window.Telegram?.WebApp;
+  let userData = {
+    id: null,
+    username: 'Anonymous',
+    balance: 0.00,
+    orders: []
+  };
+
+  // Initialize
+  document.addEventListener('DOMContentLoaded', () => {
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      tg.setHeaderColor('#0a0a0a');
+      tg.setBackgroundColor('#0a0a0a');
+
+      if (tg.initDataUnsafe?.user) {
+        const user = tg.initDataUnsafe.user;
+        userData.id = user.id;
+        userData.username = user.username || user.first_name || 'Anonymous';
+
+        document.getElementById('userName').textContent = userData.username;
+        document.getElementById('userId').textContent = `ID: ${user.id}`;
+        document.getElementById('profName').textContent = userData.username;
+        document.getElementById('profId').textContent = user.id;
+        document.getElementById('profJoined').textContent = new Date().toLocaleDateString();
+      }
+    }
+
+    generateBgPattern();
+    loadUserData();
+  });
+
+  // ====== BACKGROUND PATTERN ======
+  function generateBgPattern() {
+    const container = document.getElementById('bgPattern');
+    const chars = ['?', '?', '?', '404', '?', '?'];
+    for (let i = 0; i < 15; i++) {
+      const span = document.createElement('span');
+      span.textContent = chars[Math.floor(Math.random() * chars.length)];
+      span.style.left = Math.random() * 100 + '%';
+      span.style.top = Math.random() * 100 + '%';
+      span.style.transform = `rotate(${Math.random() * 40 - 20}deg)`;
+      span.style.fontSize = (30 + Math.random() * 60) + 'px';
+      container.appendChild(span);
+    }
+  }
+
+  // ====== NAVIGATION ======
+  let currentScreen = 'screenMain';
+
+  function switchScreen(screenId, navEl) {
+    if (screenId === currentScreen) return;
+
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(screenId).classList.add('active');
+
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    if (navEl) navEl.classList.add('active');
+
+    currentScreen = screenId;
+    if (tg) tg.HapticFeedback?.impactOccurred('light');
+  }
+
+  function goBack() {
+    switchScreen('screenMain', document.querySelector('.nav-item[data-screen="screenMain"]'));
+  }
+
+  // ====== PURCHASE FLOW ======
+  let purchaseState = {
+    type: 'residential',
+    country: 'us',
+    duration: 30,
+    qty: 1,
+    bandwidth: 5
+  };
+
+  const pricing = {
+    residential: { unit: 'gb', base: 2.50, label: 'RESIDENTIAL PROXY', desc: 'Rotating residential IPs with bandwidth allocation' },
+    datacenter: { unit: 'proxy', base: 1.20, label: 'DATACENTER PROXY', desc: 'High-speed dedicated datacenter IPs' },
+    mobile: { unit: 'gb', base: 4.50, label: 'MOBILE PROXY', desc: 'Real mobile carrier IPs for maximum trust' },
+    static: { unit: 'proxy', base: 3.00, label: 'STATIC ISP PROXY', desc: 'Dedicated static residential IPs' }
+  };
+
+  function openPurchase(type) {
+    purchaseState.type = type;
+    const p = pricing[type];
+
+    document.getElementById('purchaseType').textContent = p.label;
+    document.getElementById('purchaseDesc').textContent = p.desc;
+
+    // Show/hide bandwidth vs quantity based on type
+    const bwGroup = document.getElementById('bandwidthGroup');
+    const qtyGroup = document.getElementById('quantityGroup');
+
+    if (type === 'residential' || type === 'mobile') {
+      bwGroup.style.display = 'block';
+      qtyGroup.style.display = 'none';
+    } else {
+      bwGroup.style.display = 'none';
+      qtyGroup.style.display = 'block';
+    }
+
+    updateSummary();
+    switchScreen('screenPurchase', null);
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    if (tg) tg.HapticFeedback?.impactOccurred('medium');
+  }
+
+  function selectCountry(el) {
+    document.querySelectorAll('.country-item').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    purchaseState.country = el.dataset.country;
+    updateSummary();
+    if (tg) tg.HapticFeedback?.selectionChanged();
+  }
+
+  function selectDuration(el) {
+    el.closest('.option-grid').querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+    el.classList.add('selected');
+    purchaseState.duration = parseInt(el.dataset.duration);
+    updateSummary();
+    if (tg) tg.HapticFeedback?.selectionChanged();
+  }
+
+  function selectQty(el) {
+    el.closest('.option-grid').querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+    el.classList.add('selected');
+    purchaseState.qty = parseInt(el.dataset.qty);
+    updateSummary();
+    if (tg) tg.HapticFeedback?.selectionChanged();
+  }
+
+  function selectBandwidth(el) {
+    el.closest('.option-grid').querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+    el.classList.add('selected');
+    purchaseState.bandwidth = parseInt(el.dataset.bw);
+    updateSummary();
+    if (tg) tg.HapticFeedback?.selectionChanged();
+  }
+
+  function updateSummary() {
+    const p = pricing[purchaseState.type];
+    let total = 0;
+    let qtyLabel = '';
+
+    if (p.unit === 'gb') {
+      total = p.base * purchaseState.bandwidth;
+      qtyLabel = purchaseState.bandwidth + ' GB';
+      // Discount for 10GB
+      if (purchaseState.bandwidth >= 10) total *= 0.9;
+    } else {
+      total = p.base * purchaseState.qty * (purchaseState.duration / 30);
+      qtyLabel = '×' + purchaseState.qty;
+      // Discounts
+      if (purchaseState.qty >= 10) total *= 0.9;
+      else if (purchaseState.qty >= 5) total *= 0.95;
+      if (purchaseState.duration >= 90) total *= 0.85;
+    }
+
+    document.getElementById('sumType').textContent = p.label;
+    document.getElementById('sumCountry').textContent = purchaseState.country.toUpperCase();
+    document.getElementById('sumDuration').textContent = purchaseState.duration + ' days';
+    document.getElementById('sumQty').textContent = qtyLabel;
+    document.getElementById('sumTotal').textContent = '$' + total.toFixed(2) + ' USDT';
+
+    purchaseState.total = total;
+  }
+
+  function processPayment() {
+    if (purchaseState.total > userData.balance) {
+      showToast('❌ Insufficient balance. Please top up first.');
+      if (tg) tg.HapticFeedback?.notificationOccurred('error');
+      return;
+    }
+
+    const btn = document.getElementById('btnPay');
+    btn.disabled = true;
+    btn.innerHTML = 'PROCESSING <span class="loading-dots"><span></span><span></span><span></span></span>';
+
+    if (tg) tg.HapticFeedback?.notificationOccurred('success');
+
+    // Simulate API call
+    setTimeout(() => {
+      userData.balance -= purchaseState.total;
+      updateBalanceDisplay();
+
+      // Add mock proxy
+      const proxy = {
+        type: pricing[purchaseState.type].label,
+        country: purchaseState.country.toUpperCase(),
+        ip: generateMockIP(),
+        port: Math.floor(10000 + Math.random() * 50000),
+        user: 'uid_' + Math.random().toString(36).substr(2, 8),
+        pass: Math.random().toString(36).substr(2, 12),
+        expires: new Date(Date.now() + purchaseState.duration * 86400000).toLocaleDateString(),
+        status: 'active'
+      };
+      userData.orders.push(proxy);
+      saveUserData();
+      renderProxies();
+
+      btn.disabled = false;
+      btn.innerHTML = '▶ PAY WITH USDT';
+
+      showToast('✅ Proxy purchased successfully!');
+      switchScreen('screenProxies', document.querySelector('.nav-item[data-screen="screenProxies"]'));
+    }, 2000);
+  }
+
+  // ====== TOP UP ======
+  let selectedTopup = 10;
+
+  function openTopup() {
+    document.getElementById('topupModal').classList.add('active');
+    if (tg) tg.HapticFeedback?.impactOccurred('medium');
+  }
+
+  function closeTopup() {
+    document.getElementById('topupModal').classList.remove('active');
+  }
+
+  function selectTopup(el) {
+    document.querySelectorAll('.topup-btn').forEach(b => b.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedTopup = parseInt(el.dataset.amount);
+    if (tg) tg.HapticFeedback?.selectionChanged();
+  }
+
+  function processTopup() {
+    closeTopup();
+
+    if (tg && userData.id) {
+      // In production: send to bot backend which creates CryptoBot invoice
+      tg.sendData(JSON.stringify({
+        action: 'topup',
+        amount: selectedTopup,
+        user_id: userData.id
+      }));
+      showToast('⏳ Invoice created. Complete payment in CryptoBot.');
+    } else {
+      // Demo mode
+      userData.balance += selectedTopup;
+      updateBalanceDisplay();
+      saveUserData();
+      showToast('✅ +$' + selectedTopup + ' USDT added (demo mode)');
+    }
+
+    if (tg) tg.HapticFeedback?.notificationOccurred('success');
+  }
+
+  // ====== PROXIES LIST ======
+  function renderProxies() {
+    const container = document.getElementById('proxiesList');
+    const active = userData.orders.filter(o => o.status === 'active');
+    const expired = userData.orders.filter(o => o.status === 'expired');
+
+    document.getElementById('activeCount').textContent = active.length;
+    document.getElementById('expiredCount').textContent = expired.length;
+    document.getElementById('profOrders').textContent = userData.orders.length;
+
+    if (userData.orders.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">∅</div>
+          <div class="empty-title">No proxies yet</div>
+          <div class="empty-desc">
+            <span style="color: var(--accent);">C:\\></span> Purchase your first proxy<br>
+            to see it listed here
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = userData.orders.map((p, i) => `
+      <div class="proxy-list-item">
+        <div class="proxy-list-top">
+          <div class="proxy-list-type">${p.type}</div>
+          <div class="proxy-status ${p.status === 'active' ? 'status-active' : 'status-expired'}">
+            ${p.status.toUpperCase()}
+          </div>
+        </div>
+        <div class="proxy-credentials">
+          <button class="btn-copy" onclick="copyProxy(${i})">COPY</button>
+          <div class="proxy-cred-line">HOST: <span>${p.ip}</span></div>
+          <div class="proxy-cred-line">PORT: <span>${p.port}</span></div>
+          <div class="proxy-cred-line">USER: <span>${p.user}</span></div>
+          <div class="proxy-cred-line">PASS: <span>${p.pass}</span></div>
+        </div>
+        <div class="proxy-list-meta">
+          <div>COUNTRY: <span>${p.country}</span></div>
+          <div>EXPIRES: <span>${p.expires}</span></div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function copyProxy(index) {
+    const p = userData.orders[index];
+    const text = `${p.ip}:${p.port}:${p.user}:${p.pass}`;
+    navigator.clipboard?.writeText(text);
+    showToast('📋 Copied: ' + p.ip + ':' + p.port);
+    if (tg) tg.HapticFeedback?.notificationOccurred('success');
+  }
+
+  // ====== UTILITIES ======
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+  }
+
+  function generateMockIP() {
+    return [
+      Math.floor(1 + Math.random() * 254),
+      Math.floor(Math.random() * 255),
+      Math.floor(Math.random() * 255),
+      Math.floor(1 + Math.random() * 254)
+    ].join('.');
+  }
+
+  function updateBalanceDisplay() {
+    const bal = userData.balance.toFixed(2);
+    document.getElementById('balanceAmount').textContent = bal;
+    document.getElementById('profBalance').textContent = bal + ' USDT';
+  }
+
+  function contactSupport() {
+    if (tg) {
+      tg.sendData(JSON.stringify({ action: 'support' }));
+    }
+    showToast('💬 Opening support chat...');
+  }
+
+  // ====== LOCAL STORAGE (demo) ======
+  function saveUserData() {
+    try {
+      localStorage.setItem('unidentified_user', JSON.stringify(userData));
+    } catch(e) {}
+  }
+
+  function loadUserData() {
+    try {
+      const saved = localStorage.getItem('unidentified_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        userData.balance = parsed.balance || 0;
+        userData.orders = parsed.orders || [];
+        updateBalanceDisplay();
+        renderProxies();
+      }
+    } catch(e) {}
+  }
+
+  // Close modal on overlay click
+  document.getElementById('topupModal').addEventListener('click', function(e) {
+    if (e.target === this) closeTopup();
+  });
+</script>
+
+</body>
+</html>
